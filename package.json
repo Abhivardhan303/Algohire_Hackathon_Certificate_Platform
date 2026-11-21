@@ -1,0 +1,30 @@
+{
+  "name": "certiflow",
+  "private": true,
+  "version": "1.0.0",
+  "description": "CertiFlow - certificate issuance and verification MVP (runs on local Windows processes, no Docker required)",
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c blue,green \"npm:dev:backend\" \"npm:dev:frontend\"",
+    "dev:all": "concurrently -k -n api,web,cert,notif -c blue,green,magenta,yellow \"npm:dev:backend\" \"npm:dev:frontend\" \"npm:worker:certificates\" \"npm:worker:notifications\"",
+    "dev:backend": "npm run dev --workspace server",
+    "dev:frontend": "npm run dev --workspace client",
+    "worker:certificates": "npm run worker:certificates --workspace server",
+    "worker:notifications": "npm run worker:notifications --workspace server",
+    "db:generate": "npm run db:generate --workspace server",
+    "db:migrate": "npm run db:migrate --workspace server",
+    "db:seed": "npm run db:seed --workspace server",
+    "test": "npm run test --workspace server",
+    "check": "npm run check --workspace server && npm run check --workspace client",
+    "build": "npm run build --workspace server && npm run build --workspace client",
+    "db:setup": "node scripts/setup-db.js",
+    "redis:check": "npm run redis:check --workspace server",
+    "smoke": "node scripts/smoke-test.mjs"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

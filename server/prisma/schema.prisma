@@ -1,0 +1,202 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  TRAINING_CENTRE
+  DISTRICT_OFFICER
+  QUALITY_TEAM
+  STATE_OFFICE
+}
+
+enum BatchStatus {
+  DRAFT
+  PENDING_DISTRICT
+  PENDING_STATE
+  APPROVED
+  ISSUED
+  RETURNED
+  REJECTED
+}
+
+enum ApprovalDecision {
+  APPROVE
+  REJECT
+  RETURN
+}
+
+enum CertificateStatus {
+  VALID
+  REVOKED
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model User {
+  id               String         @id @default(cuid())
+  name             String
+  email            String         @unique
+  role             Role
+  district         String?
+  trainingCentreId String?
+  trainingCentre   TrainingCentre? @relation(fields: [trainingCentreId], references: [id])
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  submittedBatches Batch[]        @relation("BatchSubmittedBy")
+  approvals        Approval[]
+  auditLogs        AuditLog[]
+  revokedCerts     Certificate[]  @relation("CertificateRevokedBy")
+
+  @@index([role])
+  @@index([district])
+}
+
+model TrainingCentre {
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique
+  district  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users   User[]
+  batches Batch[]
+
+  @@index([district])
+}
+
+model Batch {
+  id               String      @id @default(cuid())
+  reference        String      @unique
+  trainingCentreId String
+  trainingCentre   TrainingCentre @relation(fields: [trainingCentreId], references: [id])
+  district         String
+  course           String
+  status           BatchStatus @default(DRAFT)
+  roundNumber      Int         @default(0)
+  submittedById    String?
+  submittedBy      User?       @relation("BatchSubmittedBy", fields: [submittedById], references: [id])
+  submittedAt      DateTime?
+  issuedAt         DateTime?
+  rejectionReason  String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  candidates Candidate[]
+  rounds     ApprovalRound[]
+  certificates Certificate[]
+
+  @@index([status])
+  @@index([trainingCentreId])
+  @@index([district, status])
+}
+
+model Candidate {
+  id         String   @id @default(cuid())
+  batchId    String
+  batch      Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  rowNumber  Int
+  name       String
+  identifier String
+  course     String
+  phone      String
+  createdAt  DateTime @default(now())
+
+  certificate Certificate?
+
+  @@unique([batchId, identifier])
+  @@unique([batchId, rowNumber])
+  @@index([batchId])
+}
+
+model ApprovalRound {
+  id          String   @id @default(cuid())
+  batchId     String
+  batch       Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  roundNumber Int
+  createdAt   DateTime @default(now())
+  closedAt    DateTime?
+
+  approvals Approval[]
+
+  @@unique([batchId, roundNumber])
+  @@index([batchId])
+}
+
+model Approval {
+  id        String           @id @default(cuid())
+  roundId   String
+  round     ApprovalRound    @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  officerId String
+  officer   User             @relation(fields: [officerId], references: [id])
+  decision  ApprovalDecision
+  reason    String?
+  createdAt DateTime         @default(now())
+
+  // One decision per officer per round -> blocks double approvals at the DB level.
+  @@unique([roundId, officerId])
+  @@index([roundId, decision])
+}
+
+model Certificate {
+  id                String            @id @default(cuid())
+  candidateId       String            @unique
+  candidate         Candidate         @relation(fields: [candidateId], references: [id])
+  batchId           String
+  batch             Batch             @relation(fields: [batchId], references: [id])
+  certificateNumber String            @unique
+  verificationToken String            @unique
+  status            CertificateStatus @default(VALID)
+  issueDate         DateTime          @default(now())
+  pdfPath           String?
+  revokedAt         DateTime?
+  revokedById       String?
+  revokedBy         User?             @relation("CertificateRevokedBy", fields: [revokedById], references: [id])
+  revokeReason      String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  deliveryJob DeliveryJob?
+
+  @@index([batchId])
+  @@index([status])
+}
+
+model DeliveryJob {
+  id            String         @id @default(cuid())
+  certificateId String         @unique
+  certificate   Certificate    @relation(fields: [certificateId], references: [id], onDelete: Cascade)
+  status        DeliveryStatus @default(PENDING)
+  attempts      Int            @default(0)
+  lastError     String?
+  providerRef   String?
+  sentAt        DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([status])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id])
+  action     String
+  entityType String
+  entityId   String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
